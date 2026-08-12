@@ -16,6 +16,7 @@ class Monitor(Node):
 
       1. Muestra la posicion actual (log en consola).
       2. Curva del historial de posicion (plot en vivo con matplotlib).
+         Debajo, con el mismo eje de tiempo, la curva de velocidad.
       3. Archivo de historial con timestamp de posicion y velocidad (CSV).
 
     Sobre el emparejamiento posicion/velocidad
@@ -52,13 +53,17 @@ class Monitor(Node):
         self.pending_pos = deque(maxlen=self._MAX_PENDING)
         self.pending_vel = deque(maxlen=self._MAX_PENDING)
 
-        # Historial (tiempo relativo, posicion) para la curva.
+        # Historial (tiempo relativo, posicion, velocidad) para las curvas.
+        # Las tres listas se llenan SIEMPRE juntas, en _drain(), asi que el
+        # indice i de las tres se refiere a la misma muestra: hist_t[i] sirve
+        # de eje x para las dos curvas y no hay que interpolar nada.
         # El lock protege estas estructuras y las colas de arriba, que se tocan
         # desde dos hilos: los callbacks de ROS (hilo de spin) y el redibujado
         # de matplotlib (hilo principal).
         self.t0 = self.get_clock().now()
         self.hist_t = []
         self.hist_pos = []
+        self.hist_rpm = []
         self.lock = threading.Lock()
 
         # Archivo de historial con timestamp
@@ -98,6 +103,7 @@ class Monitor(Node):
             self.last_rpm = rpm
             self.hist_t.append(t)
             self.hist_pos.append(pos)
+            self.hist_rpm.append(rpm)
             rows.append((t, pos, rpm))
         return rows
 
@@ -130,21 +136,46 @@ def main(args=None):
     spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     spin_thread.start()
 
-    fig, ax = plt.subplots()
-    ax.set_title("Historial de posicion del encoder")
-    ax.set_xlabel("Tiempo [s]")
-    ax.set_ylabel("Posicion [tics]")
-    (line,) = ax.plot([], [], lw=2)
+    # Dos paneles apilados, NO dos escalas en un mismo eje: tics y RPM son
+    # magnitudes distintas y superponerlas en un eje doble haria que el cruce
+    # de las curvas pareciera significar algo. sharex acopla el eje de tiempo,
+    # asi que las dos curvas quedan alineadas y el zoom actua sobre las dos.
+    fig, (ax_pos, ax_vel) = plt.subplots(2, 1, sharex=True, figsize=(9, 7))
+    fig.suptitle("Encoder: historial de posicion y velocidad")
+
+    ax_pos.set_ylabel("Posicion [tics]")
+    ax_vel.set_ylabel("Velocidad [RPM]")
+    ax_vel.set_xlabel("Tiempo [s]")
+
+    # Una sola serie por panel: el ylabel ya la identifica, no hace falta
+    # leyenda. Grilla y ejes en gris para que la curva sea lo que resalta.
+    for ax in (ax_pos, ax_vel):
+        ax.grid(True, color="#e6e5e1", lw=0.8)
+        ax.set_axisbelow(True)
+        ax.tick_params(colors="#52514e")
+        for spine in ax.spines.values():
+            spine.set_color("#c9c8c2")
+
+    # Cero de referencia: la velocidad tiene signo, y la linea separa de un
+    # vistazo un sentido de giro del otro (y marca el reposo).
+    ax_vel.axhline(0, color="#c9c8c2", lw=1)
+
+    (line_pos,) = ax_pos.plot([], [], lw=2, color="#2a78d6")
+    (line_vel,) = ax_vel.plot([], [], lw=2, color="#eb6834")
 
     def update(_frame):
         with node.lock:
             t = list(node.hist_t)
             p = list(node.hist_pos)
+            v = list(node.hist_rpm)
         if t:
-            line.set_data(t, p)
-            ax.relim()
-            ax.autoscale_view()
-        return (line,)
+            line_pos.set_data(t, p)
+            line_vel.set_data(t, v)
+            # Reescalar los dos: comparten x, pero cada uno tiene su propio y.
+            for ax in (ax_pos, ax_vel):
+                ax.relim()
+                ax.autoscale_view()
+        return (line_pos, line_vel)
 
     # Hay que guardar la referencia: si FuncAnimation se recolecta, la
     # animacion se frena y el grafico queda congelado.
