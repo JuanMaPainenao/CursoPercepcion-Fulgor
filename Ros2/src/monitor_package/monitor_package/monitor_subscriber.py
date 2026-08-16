@@ -12,29 +12,6 @@ from matplotlib.animation import FuncAnimation
 
 
 class Monitor(Node):
-    """Consumidor de los datos del encoder. Cumple los 3 entregables:
-
-      1. Muestra la posicion actual (log en consola).
-      2. Curva del historial de posicion (plot en vivo con matplotlib).
-         Debajo, con el mismo eje de tiempo, la curva de velocidad.
-      3. Archivo de historial con timestamp de posicion y velocidad (CSV).
-
-    Sobre el emparejamiento posicion/velocidad
-    ------------------------------------------
-    Cada renglon que manda el ESP32 trae los dos valores del MISMO instante,
-    pero viajan por dos topicos distintos. No se puede asumir que el callback
-    de posicion y el de velocidad se ejecuten en el orden en que se
-    publicaron: el executor de ROS revisa las suscripciones en el orden en
-    que se crearon, no en orden de llegada. (Se ve enseguida: si guardaramos
-    "el ultimo rpm recibido" al llegar la posicion, la columna de velocidad
-    del CSV sale corrida una muestra.)
-
-    Como el puente publica exactamente un mensaje en cada topico por cada
-    renglon serial, y el QoS reliable garantiza orden y no-perdida DENTRO de
-    cada topico, alcanza con encolar cada stream y emparejar el i-esimo de
-    uno con el i-esimo del otro. Eso es exacto y no depende del scheduler.
-    """
-
     # Tope de las colas de emparejamiento. En regimen tienen 0 o 1 elemento;
     # esto es solo un cinturon de seguridad para que un desbalance no coma RAM.
     _MAX_PENDING = 100

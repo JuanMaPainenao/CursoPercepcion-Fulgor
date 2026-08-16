@@ -9,3 +9,4 @@ install/
 # Python
 __pycache__/
 *.pyc
+.claude/
