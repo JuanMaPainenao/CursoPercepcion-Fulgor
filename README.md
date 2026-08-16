@@ -15,42 +15,6 @@ datos en vivo y los registra en un CSV.
                                                     /encoder/velocity   Float32 (RPM)
 ```
 
-## Estructura del repo
-
-| Carpeta | Qué es |
-|---|---|
-| `MicroROS2/` | Firmware del ESP32 (ESP-IDF + `micro_ros_espidf_component`) |
-| `TP1Agentev2/` | Workspace ROS 2 con el **micro-ROS Agent** compilado |
-| `Ros2/` | Workspace ROS 2 con `monitor_package` (visualización + CSV) |
-
-## Hardware y conexionado
-
-| Señal | GPIO del ESP32 |
-|---|---|
-| Encoder canal **A** | `GPIO 21` |
-| Encoder canal **B** | `GPIO 26` |
-| GND | GND |
-| Vcc del encoder | 3V3 (o 5V según el módulo) |
-
-Los pines se cambian en `MicroROS2/main/include/encoder.h`. El firmware activa
-pull-ups internos, así que un encoder "pelado" sin pull-ups propios también anda.
-
-**La señal Z (índice) no se usa**: el TP mide posición y velocidad *relativas*.
-Z solo haría falta para un homing absoluto.
-
-## Parámetros del sistema
-
-Todos en `MicroROS2/main/include/encoder.h`:
-
-| Parámetro | Valor | Nota |
-|---|---|---|
-| `PPR` | 20 | Pulsos por vuelta de **un** canal — dato del encoder, verificalo |
-| `CPR` | 80 | `4 × PPR`, conteos por vuelta en cuadratura 4x |
-| `PERIOD_MS` | 1000 | Ventana de velocidad y cadencia de publicación |
-| Resolución de velocidad | **0.75 RPM** | `1 tic/s` con CPR=80. Subir `PERIOD_MS` mejora la resolución a costa de retardo |
-
----
-
 ## Puesta en marcha
 
 ### Paso 0 — Configuración (solo la primera vez, o si cambió la IP de la PC)
@@ -177,50 +141,6 @@ Para terminar, **cerrá la ventana del gráfico**: eso dispara el cierre ordenad
 
 ---
 
-## Entregables
 
-| Entregable | Dónde queda |
-|---|---|
-| Posición actual | Log en consola de la Terminal 4 |
-| Curva de historial de posición | Ventana de matplotlib (panel superior) |
-| Archivo de historial con timestamp | `Ros2/encoder_log.csv` |
 
-Formato del CSV:
 
-```csv
-timestamp,t_rel_s,position_tics,velocity_rpm
-2026-08-12T14:03:21.412,1.001,80,60.00
-```
-
-Dos detalles de la captura:
-
-- **El CSV se sobrescribe en cada corrida** (se abre en modo `"w"`). Si sacaste
-  una buena captura y volvés a levantar el nodo, la perdés. Para conservar varias:
-
-  ```bash
-  ros2 run monitor_package monitor_subscriber \
-    --ros-args -p csv_path:=encoder_log_$(date +%H%M%S).csv
-  ```
-
-- **La ruta es relativa al directorio desde donde lanzás el nodo.** Por eso el
-  `cd Ros2` de arriba. Si querés que no dependa del cwd, pasale una ruta absoluta.
-
-Para el informe conviene también guardar el gráfico: el botón del disquete en la
-barra de matplotlib lo exporta como PNG.
-
----
-
-## Problemas frecuentes
-
-| Síntoma | Causa probable |
-|---|---|
-| El Agent no registra nada al encender la placa | IP del Agent mal configurada, o PC y ESP32 en redes distintas |
-| La placa dice `Agent encontrado` pero `ros2 topic list` no muestra los tópicos | `ROS_DOMAIN_ID` distinto entre PC (33) y firmware |
-| La placa se queda en `Esperando al micro-ROS Agent...` | El Agent no está corriendo, o el puerto 8888 está bloqueado por el firewall |
-| La posición cuenta al revés | Intercambiar `PIN_ENC_A` y `PIN_ENC_B` en `encoder.h` (los dos, nunca uno solo) |
-| La posición salta o cuenta de más | Ruido en las señales: subir `ENC_GLITCH_NS` en `encoder.h` |
-| Las RPM dan escaladas por un factor constante | `PPR` no coincide con el encoder real |
-| La curva de velocidad sale escalonada | Normal: la resolución es 0.75 RPM a 1 Hz. Subir `PERIOD_MS` la mejora |
-| `ros2 run` usa la versión vieja del código Python | Falta `colcon build --packages-select monitor_package` |
-| El monitor falla al abrir la ventana | Sesión sin display (SSH sin X): matplotlib necesita entorno gráfico |
-| El puerto serie no aparece | Revisar el cable y permisos: `sudo usermod -aG dialout $USER` (requiere volver a iniciar sesión) |
