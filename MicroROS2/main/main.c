@@ -37,8 +37,6 @@
 #define MICRO_ROS_APP_STACK      24000
 #define MICRO_ROS_APP_TASK_PRIO  5
 
-/* Dominio DDS en el que se crea el nodo. Tiene que coincidir con el
- * ROS_DOMAIN_ID de la PC (el de tu .bashrc es 33). */
 #define ROS_DOMAIN_ID  33
 
 static const char *TAG = "micro_ros";
@@ -58,8 +56,6 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
     s_pos_msg.data = encoder_get_position();
     s_vel_msg.data = encoder_get_rpm();
 
-    /* RCSOFTCHECK y no RCCHECK: si se cae el WiFi o el Agent, la publicación
-     * falla pero la tarea tiene que seguir viva para reconectar. */
     RCSOFTCHECK(rcl_publish(&s_pos_pub, &s_pos_msg, NULL));
     RCSOFTCHECK(rcl_publish(&s_vel_pub, &s_vel_msg, NULL));
 
@@ -110,8 +106,6 @@ static void micro_ros_task(void *arg)
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
         "encoder/velocity"));
 
-    /* Misma cadencia que la ventana de velocidad: publicar más rápido que
-     * PERIOD_MS sólo repetiría la misma RPM. */
     rcl_timer_t timer = rcl_get_zero_initialized_timer();
     RCCHECK(rclc_timer_init_default2(
         &timer, &support, RCL_MS_TO_NS(PERIOD_MS), timer_callback, true));
@@ -129,7 +123,6 @@ static void micro_ros_task(void *arg)
         usleep(10000);   /* cede CPU al idle task */
     }
 
-    /* Inalcanzable, pero deja asentado qué habría que liberar. */
     RCCHECK(rcl_publisher_fini(&s_pos_pub, &node));
     RCCHECK(rcl_publisher_fini(&s_vel_pub, &node));
     RCCHECK(rcl_node_fini(&node));
@@ -143,8 +136,6 @@ void app_main(void)
     ESP_ERROR_CHECK(uros_network_interface_initialize());
 #endif
 
-    /* El encoder arranca primero: así el PCNT ya cuenta y el timer de
-     * velocidad ya tiene una ventana cerrada para cuando aparezca el Agent. */
     encoders_init();
 
     xTaskCreate(micro_ros_task, "micro_ros_task",
