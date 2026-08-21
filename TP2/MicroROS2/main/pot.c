@@ -30,6 +30,6 @@ int pot_get_raw(void)
 }
 
 int32_t pot_get_mv(void)
-{
-    return (pot_get_raw() * 3300) / 4095;   // 0..3300 mV
+{   return (pot_get_raw() * 3300) / 4095;   // 0..3300 mV
 }
+ 

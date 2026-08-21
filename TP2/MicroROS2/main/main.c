@@ -37,8 +37,7 @@
 #define MICRO_ROS_APP_TASK_PRIO  5
 
 #define ROS_DOMAIN_ID       33
-#define PUBLISH_PERIOD_MS   100    /* Ventana de publicación (antes PERIOD_MS del encoder) */
-
+#define PUBLISH_PERIOD_MS   100
 static const char *TAG = "micro_ros";
 
 static rcl_publisher_t        s_pos_pub;   /* posición 0..100 %   */
@@ -49,19 +48,61 @@ static std_msgs__msg__Float32 s_volt_msg;
 static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
     RCLC_UNUSED(last_call_time);
+
     if (timer == NULL) {
         return;
     }
 
-    int raw = pot_get_raw();                       /* 0..4095 */
-    s_pos_msg.data  = (raw * 100.0f) / 4095.0f;    /* posición en % */
-    s_volt_msg.data = (raw * 3.3f)  / 4095.0f;     /* voltaje, del MISMO raw */
+    /* Valores extremos aprendidos automáticamente */
+    static int raw_min = 4095;
+    static int raw_max = 0;
 
-    RCSOFTCHECK(rcl_publish(&s_pos_pub,  &s_pos_msg,  NULL));
+    int raw = pot_get_raw();
+
+    /* Auto-calibración */
+    if (raw < raw_min) {
+        raw_min = raw;
+    }
+
+    if (raw > raw_max) {
+        raw_max = raw;
+    }
+
+    /* Posición normalizada 0-100 % */
+    float position = 0.0f;
+
+    if (raw_max > raw_min) {
+        position = ((float)(raw - raw_min) * 100.0f) /
+                   ((float)(raw_max - raw_min));
+    }
+
+    /* Saturación por seguridad */
+    if (position < 0.0f) {
+        position = 0.0f;
+    }
+
+    if (position > 100.0f) {
+        position = 100.0f;
+    }
+
+    s_pos_msg.data = position;
+
+    /*
+     * Voltaje del ADC.
+     * Esto NO se autoescala: representa la tensión medida.
+     */
+    s_volt_msg.data = (raw * 3.3f) / 4095.0f;
+
+    RCSOFTCHECK(rcl_publish(&s_pos_pub, &s_pos_msg, NULL));
     RCSOFTCHECK(rcl_publish(&s_volt_pub, &s_volt_msg, NULL));
 
-    ESP_LOGI(TAG, "raw = %4d | pos = %.1f %% | volt = %.3f V",
-             raw, s_pos_msg.data, s_volt_msg.data);
+    ESP_LOGI(TAG,
+             "raw=%4d | min=%4d | max=%4d | pos=%.1f %% | volt=%.2f V",
+             raw,
+             raw_min,
+             raw_max,
+             s_pos_msg.data,
+             s_volt_msg.data);
 }
 
 static void micro_ros_task(void *arg)
