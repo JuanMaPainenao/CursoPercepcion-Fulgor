@@ -2,52 +2,21 @@
 
 #include "driver/pulse_cnt.h"   /* nuevo driver PCNT (ESP-IDF v5.x): esp_driver_pcnt */
 #include "driver/gpio.h"
-#include "esp_timer.h"
 #include "esp_log.h"
 
 static const char *TAG = "encoder";
 
-/* ---- Handles del periférico ---- */
-static pcnt_unit_handle_t    s_unit        = NULL;
-static pcnt_channel_handle_t s_chan_a      = NULL;
-static pcnt_channel_handle_t s_chan_b      = NULL;
-static esp_timer_handle_t    s_speed_timer = NULL;
-
-static int32_t        s_last_pos = 0;
-static volatile float s_rpm      = 0.0f;
+static pcnt_unit_handle_t    s_unit   = NULL;
+static pcnt_channel_handle_t s_chan_a = NULL;
+static pcnt_channel_handle_t s_chan_b = NULL;
 
 int32_t encoder_get_position(void)
 {
     int count = 0;
-    /* Sólo puede fallar si s_unit es NULL, o sea si alguien se olvidó de
-     * llamar a encoders_init(). Que aborte con un mensaje claro es mejor
-     * que devolver 0 en silencio. */
     ESP_ERROR_CHECK(pcnt_unit_get_count(s_unit, &count));
     return (int32_t)count;
 }
 
-float encoder_get_rpm(void)
-{
-    return s_rpm;
-}
-
-float encoder_get_angle_deg(void)
-{
-    return (float)encoder_get_position() / CPR * 360.0f;
-}
-
-static void speed_timer_cb(void *arg)
-{
-    int32_t pos   = encoder_get_position();
-    int32_t delta = pos - s_last_pos;
-    s_last_pos    = pos;
-
-    s_rpm = (float)delta / CPR * (60000.0f / PERIOD_MS);
-}
-
-/* ------------------------------------------------------------
- *  Inicialización del PCNT en cuadratura 4x
- * ------------------------------------------------------------ */
 void encoders_init(void)
 {
     pcnt_unit_config_t unit_config = {
@@ -56,8 +25,9 @@ void encoders_init(void)
         .flags.accum_count = 1,
     };
     ESP_ERROR_CHECK(pcnt_new_unit(&unit_config, &s_unit));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_unit, PCNT_HIGH_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_unit, PCNT_LOW_LIMIT));
 
-    /* 2) Filtro de glitches (ruido / rebote). */
     pcnt_glitch_filter_config_t filter_config = {
         .max_glitch_ns = ENC_GLITCH_NS,
     };
@@ -79,33 +49,23 @@ void encoders_init(void)
         PCNT_CHANNEL_EDGE_ACTION_DECREASE,   /* flanco de subida de A */
         PCNT_CHANNEL_EDGE_ACTION_INCREASE)); /* flanco de bajada de A */
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(s_chan_a,
-        PCNT_CHANNEL_LEVEL_ACTION_KEEP,      /* B en alto  -> mantener */
-        PCNT_CHANNEL_LEVEL_ACTION_INVERSE)); /* B en bajo  -> invertir */
+        PCNT_CHANNEL_LEVEL_ACTION_KEEP,      /* B en alto -> mantener */
+        PCNT_CHANNEL_LEVEL_ACTION_INVERSE)); /* B en bajo -> invertir */
 
     ESP_ERROR_CHECK(pcnt_channel_set_edge_action(s_chan_b,
         PCNT_CHANNEL_EDGE_ACTION_INCREASE,   /* flanco de subida de B */
         PCNT_CHANNEL_EDGE_ACTION_DECREASE)); /* flanco de bajada de B */
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(s_chan_b,
-        PCNT_CHANNEL_LEVEL_ACTION_KEEP,      /* A en alto  -> mantener */
-        PCNT_CHANNEL_LEVEL_ACTION_INVERSE)); /* A en bajo  -> invertir */
-
-    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_unit, PCNT_HIGH_LIMIT));
-    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_unit, PCNT_LOW_LIMIT));
+        PCNT_CHANNEL_LEVEL_ACTION_KEEP,      /* A en alto -> mantener */
+        PCNT_CHANNEL_LEVEL_ACTION_INVERSE)); /* A en bajo -> invertir */
 
     gpio_set_pull_mode(PIN_ENC_A, GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(PIN_ENC_B, GPIO_PULLUP_ONLY);
 
+    /* 5) Habilitar, poner en cero y arrancar. */
     ESP_ERROR_CHECK(pcnt_unit_enable(s_unit));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(s_unit));
     ESP_ERROR_CHECK(pcnt_unit_start(s_unit));
-
-    const esp_timer_create_args_t timer_args = {
-        .callback = &speed_timer_cb,
-        .name     = "speed_timer",
-    };
-    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_speed_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(s_speed_timer,
-                                             (uint64_t)PERIOD_MS * 1000ULL));
 
     ESP_LOGI(TAG, "Encoder PCNT 4x listo (A=%d, B=%d, CPR=%d)",
              PIN_ENC_A, PIN_ENC_B, CPR);

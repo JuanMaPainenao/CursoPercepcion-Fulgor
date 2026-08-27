@@ -37,7 +37,7 @@
 #define MICRO_ROS_APP_STACK      24000
 #define MICRO_ROS_APP_TASK_PRIO  5
 
-#define ROS_DOMAIN_ID  33
+#define ROS_DOMAIN_ID  0
 
 static const char *TAG = "micro_ros";
 
@@ -46,6 +46,8 @@ static rcl_publisher_t        s_vel_pub;
 static std_msgs__msg__Int32   s_pos_msg;
 static std_msgs__msg__Float32 s_vel_msg;
 
+static int32_t s_last_pos = 0;
+
 static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
 {
     RCLC_UNUSED(last_call_time);
@@ -53,8 +55,12 @@ static void timer_callback(rcl_timer_t *timer, int64_t last_call_time)
         return;
     }
 
-    s_pos_msg.data = encoder_get_position();
-    s_vel_msg.data = encoder_get_rpm();
+    int32_t pos   = encoder_get_position();
+    int32_t delta = pos - s_last_pos;
+    s_last_pos    = pos;
+
+    s_pos_msg.data = pos;
+    s_vel_msg.data = (float)delta / CPR * (60000.0f / PERIOD_MS);
 
     RCSOFTCHECK(rcl_publish(&s_pos_pub, &s_pos_msg, NULL));
     RCSOFTCHECK(rcl_publish(&s_vel_pub, &s_vel_msg, NULL));
@@ -110,7 +116,6 @@ static void micro_ros_task(void *arg)
     RCCHECK(rclc_timer_init_default2(
         &timer, &support, RCL_MS_TO_NS(PERIOD_MS), timer_callback, true));
 
-    /* Un solo handle: el timer. No hay suscripciones ni servicios. */
     rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
     RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
     RCCHECK(rclc_executor_add_timer(&executor, &timer));
