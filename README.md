@@ -1,4 +1,4 @@
-# FUlgor - Curso de Robotica e IA - Percepcion
+# Fulgor - Curso de Robotica e IA - Percepcion
 ## Grupo 7 
 ## Integrantes:
 - Gallone, Francesco
