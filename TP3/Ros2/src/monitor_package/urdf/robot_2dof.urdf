@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<!--
+  Robot simple de 2 grados de libertad para el TP3.
+  - joint_pot     : GDL 1, lo maneja el POTENCIÓMETRO (giro sobre eje Z, "pan").
+  - joint_as5600  : GDL 2, lo maneja el AS5600       (giro sobre eje Y, "tilt").
+
+  Solo geometría de visualización (visual). No hay <collision> ni <inertial>
+  porque NO usamos motor de física: RViz es un visualizador, no un simulador.
+-->
+<robot name="robot_2dof">
+
+  <!-- ================= Colores ================= -->
+  <material name="gris">    <color rgba="0.40 0.40 0.40 1"/></material>
+  <material name="azul">    <color rgba="0.10 0.30 0.80 1"/></material>
+  <material name="naranja"> <color rgba="0.90 0.50 0.10 1"/></material>
+
+  <!-- ================= BASE (fija) ================= -->
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.06" length="0.05"/>
+      </geometry>
+      <material name="gris"/>
+    </visual>
+  </link>
+
+  <!-- ========= GDL 1: POTENCIÓMETRO (eje Z, "pan") ========= -->
+  <!-- revolute = giro limitado. Mapeamos 0..100% del pot a 0..360° (0..2*pi). -->
+  <joint name="joint_pot" type="revolute">
+    <parent link="base_link"/>
+    <child  link="link_pan"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <axis   xyz="0 0 1"/>
+    <limit lower="0.0" upper="6.2832" effort="0" velocity="0"/>
+  </joint>
+
+  <link name="link_pan">
+    <visual>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.04 0.04 0.15"/>
+      </geometry>
+      <material name="azul"/>
+    </visual>
+  </link>
+
+  <!-- ========= GDL 2: AS5600 (eje Y, "tilt") ========= -->
+  <!-- continuous = giro sin límite. El AS5600 mide 0..360° absolutos. -->
+  <joint name="joint_as5600" type="continuous">
+    <parent link="link_pan"/>
+    <child  link="link_tilt"/>
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <axis   xyz="0 1 0"/>
+  </joint>
+
+  <link name="link_tilt">
+    <visual>
+      <origin xyz="0.075 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.15 0.03 0.03"/>
+      </geometry>
+      <material name="naranja"/>
+    </visual>
+  </link>
+
+</robot>
